@@ -162,13 +162,11 @@ ga('create','UA-148409521-1','auto');ga('send','pageview');
 <li><p>你一定不能在struct被pinned期间，提供任何可能导致 structural field 被move出去的方法。例如，如果 struct 包含 <code>Option&lt;T&gt;</code>，恰好有个take方法，其函数形参为 <code>fn(Pin&lt;&amp;mut Self&gt;) -&gt; Pin&lt;&amp;mut T&gt;</code>，这 take 方法可被用来将 T 从 pinned 的 <code>Struct&lt;T&gt;</code> move出去</p>
 </li>
 </ol>
-<ul>
-<li>这意味着 pinning 不能用于 结构化pin住 持有数据的这个字段<blockquote>
+<p>这意味着 pinning 不能用于 结构化pin住 持有数据的这个字段</p>
+<blockquote>
 <p>上面这句话有些生硬。换成英文感受下</p>
 <p>which means pinning cannot be structural for the field holding this data.<br>意思是，Struct 的字段明明被 pinning 了，结果你提供方法将 <code>Pin&lt;&amp;mut Struct&lt;T&gt;&gt;</code> 转换为 <code>Option&lt;T&gt;</code>，使得 T 逃脱了 Pin 的约束，这显然是<strong>错误</strong>的</p>
 </blockquote>
-</li>
-</ul>
 <p>再举一个更复杂的，将数据从已经被 pinned 的结构 move 出去的例子。想象下如果 <code>RefCell&lt;T&gt;</code>有个 <code>fn get_pin_mut(self: Pin&lt;&amp;mut Self&gt;) -&gt; Pin&lt;&amp;mut T&gt;</code>方法，那我们可以这么玩</p>
 <figure class="highlight rs"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">exploit_ref_cell</span></span>&lt;T&gt;(rc: Pin&lt;&amp;<span class="keyword">mut</span> RefCell&lt;T&gt;&gt;) &#123;</span><br><span class="line">    &#123; <span class="keyword">let</span> p = rc.as_mut().get_pin_mut(); &#125; <span class="comment">// 将 Pin&lt;&amp;mut RefCell&lt;T&gt;&gt; 转换为 Pin&lt;&amp;mut T&gt;</span></span><br><span class="line">    <span class="keyword">let</span> rc_shr: &amp;RefCell&lt;T&gt; = rc.into_ref().get_ref(); <span class="comment">// Pin&lt;&amp;mut T&gt; =&gt; &amp;RefCell&lt;T&gt;</span></span><br><span class="line">    <span class="keyword">let</span> b = rc_shr.borrow_mut(); <span class="comment">// RefCell本身有 borrow_mut() 方法，可以通过 &amp;self 获得 &amp;mut self。</span></span><br><span class="line">    <span class="comment">// https://doc.rust-lang.org/std/cell/struct.RefCell.html#method.borrow_mut</span></span><br><span class="line">    <span class="comment">// RefCell借助UnsafeCell，将 &amp;self 转为 &amp;mut self</span></span><br><span class="line">    <span class="keyword">let</span> content = &amp;<span class="keyword">mut</span> *b; <span class="comment">// reborrow下，最终获取 &amp;mut T</span></span><br><span class="line">    <span class="comment">// 通过上述 "努力" ，将 Pin&lt;&amp;mut Ref&lt;T&gt;&gt; 一步步转化成 &amp;mut T，逃脱了Pin的限制</span></span><br><span class="line">    <span class="comment">// 获得 &amp;mut T后，就能将 T 从 Pin&lt;&amp;mut RefCell&lt;T&gt;&gt; move出去</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
